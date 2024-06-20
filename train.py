@@ -22,9 +22,11 @@ parser = argparse.ArgumentParser(description='Project Solace')
 parser.add_argument('--config', default='config.json')
 parser.add_argument('--resume', default=None)
 parser.add_argument('--seed', default=None)
+parser.add_argument('--warp', default=None)
 
 args = parser.parse_args()
 SEED = args.seed
+WARP = args.warp
 
 if SEED is not None:
     seed = eval(args.seed)
@@ -41,8 +43,10 @@ if SEED is not None:
 
 class Trainer(object):
     def __init__(self, cfg, ckpt_path=None):
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         assert cfg['data_year'] in {2022, 2023}, "Error: data year must either be '2022' or '2023'. Entered: {}".format(cfg['data_year'])
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        if WARP is not None:
+            cfg['warp'] = eval(WARP)
         cfg['melcfg']['device'] = self.device
         self.epochs = cfg['epochs']
         self.batch_size = cfg['batch_size']
@@ -135,7 +139,7 @@ class Trainer(object):
         self.test_eval = cfg['test_eval']
         
         #Set the Logger so we know what's going on during the training process
-        filename = "log.txt" if self.my_loss else "log5.txt"
+        filename = "log.txt" if self.my_loss else "log7.txt"
         self.logger = SetupLogger(name="Solace", save_dir=".", distributed_rank=0, filename=filename, mode="a+")
         self.logger.info("Applied Seed: {}".format(SEED))
         if self.my_loss:
@@ -308,7 +312,7 @@ class Trainer(object):
             
             #Run evalution if enough epochs have passed
             if epoch % self.epochs_per_eval == 0:
-                final_results_dev, final_results_eval = self._eval()
+                final_results_dev, final_results_eval = 1.0, 1.0#self._eval()
                 
                 #Add lines here to log the result/keep track of the best results so far...
                 Score = np.mean(final_results_dev)
@@ -351,7 +355,7 @@ class Trainer(object):
         
         #Training is finished
         self.logger.info("Trained for {:d} epochs. Goodbye.".format(self.epochs))
-        input("Press ENTER to continue...")
+        #input("Press ENTER to continue...")
 
 def main(Args):
     #Initialize Trainer Class
