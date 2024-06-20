@@ -118,6 +118,9 @@ class Trainer(object):
                       {'params': [Param for Param in self.Loss.parameters()], 'weight_decay': cfg['loss_weight_decay'], 'lr': cfg['loss_learning_rate']}]
         #self.optimizer = torch.optim.Adam(Parameters)# if not cfg['my_loss'] else 
         self.optimizer = torch.optim.AdamW(Parameters)#, eps=1.0) #Change this...?
+        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=10, eta_min=0.0005)
+        #self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[1,4,7], gamma=0.5)
+        #self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=2, gamma=0.5)
         #self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.5)
         
         #Some job tracking variables
@@ -132,7 +135,7 @@ class Trainer(object):
         self.test_eval = cfg['test_eval']
         
         #Set the Logger so we know what's going on during the training process
-        filename = "log.txt" if self.my_loss else "log3.txt"
+        filename = "log.txt" if self.my_loss else "log5.txt"
         self.logger = SetupLogger(name="Solace", save_dir=".", distributed_rank=0, filename=filename, mode="a+")
         self.logger.info("Applied Seed: {}".format(SEED))
         if self.my_loss:
@@ -301,7 +304,7 @@ class Trainer(object):
                             self.optimizer.param_groups[2]['lr'],
                             running_avg))
             
-            #self.lr_scheduler.step()
+            self.lr_scheduler.step()
             
             #Run evalution if enough epochs have passed
             if epoch % self.epochs_per_eval == 0:
