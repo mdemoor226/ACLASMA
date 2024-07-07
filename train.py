@@ -23,10 +23,12 @@ parser.add_argument('--config', default='config.json')
 parser.add_argument('--resume', default=None)
 parser.add_argument('--seed', default=None)
 parser.add_argument('--warp', default=None)
+parser.add_argument('--verbose', default=False)
 
 args = parser.parse_args()
 SEED = args.seed
 WARP = args.warp
+VERBOSE = args.verbose
 
 if SEED is not None:
     seed = eval(args.seed)
@@ -75,8 +77,8 @@ class Trainer(object):
             self.Tr1Loader = data.DataLoader(Train_Data, batch_size=self.batch_size, shuffle=True, num_workers=2, pin_memory=True, drop_last=True)#SMOTE) 
             self.Tr2Loader = data.DataLoader(Train_Data, batch_size=self.batch_size, shuffle=True, num_workers=2, pin_memory=True, drop_last=True)#SMOTE)
 
-        self.Lambda = torch.distributions.beta.Beta(cfg['mixupcfg']['alpha'],cfg['mixupcfg']['alpha'])
         self.Mixup = cfg['mixupcfg']['mixup']
+        self.Lambda = torch.distributions.beta.Beta(cfg['mixupcfg']['alpha'],cfg['mixupcfg']['alpha']) if self.Mixup else None
         
         #Train Set Eval DataLoader
         TrEval_Data = Data(TrData, Train=True, SMOTE=False, Target_sr=cfg['target_sr'], smotecfg=cfg['smotecfg'], year=cfg['data_year'])
@@ -94,6 +96,7 @@ class Trainer(object):
 
         #Combine all the Loaders into single object which is used for evaluation
         self.Meta = Meta
+        self.Meta['verbose'] = VERBOSE
         self.Meta['TsFiles'] = TsData['Files']
         self.Meta['data_year'] = data_year
         self.Loaders = {'Train': self.TrVLoader, 'Eval': self.ValLoader, 'Unknown': self.UnknownLoader, 'Test': self.TestLoader}
@@ -115,14 +118,27 @@ class Trainer(object):
             ProxyCheckpoint = "./Checkpoints/Loss-Weights/Weights_Iter:" + ckpt_path[-8:] #Fix This Value if necessary
             proxy_checkpoint = torch.load(ProxyCheckpoint, map_location=self.device)
             self.Loss.load_state_dict(proxy_checkpoint)
-    
+        
+        #"""
+        NewShift = self.Loss.shift.item()
+        NewScale = self.Loss.s.clone()
+        ProxyCheckpoint = "./Checkpoints/Loss-Weights/StartWeights.pth"
+        proxy_checkpoint = torch.load(ProxyCheckpoint, map_location=self.device)
+        self.Loss.load_state_dict(proxy_checkpoint)
+        self.Loss.shift.data = torch.Tensor([NewShift])
+        self.Loss.s.data = NewScale.data
+        self.Loss.to(self.device)
+        #"""
+        #import code
+        #code.interact(local=locals())
+        
         #Omit Batch Norm, bias, and non trainable parameters from weight decay.regularization
         Parameters = [{'params': [Param for Param in self.model.parameters() if len(Param.shape) == 1 and Param.requires_grad], 'weight_decay': 0.0, 'lr': cfg['learning_rate']},
                       {'params': [Param for Param in self.model.parameters() if len(Param.shape) != 1 and Param.requires_grad], 'weight_decay': cfg['weight_decay'], 'lr': cfg['learning_rate']},
                       {'params': [Param for Param in self.Loss.parameters()], 'weight_decay': cfg['loss_weight_decay'], 'lr': cfg['loss_learning_rate']}]
         #self.optimizer = torch.optim.Adam(Parameters)# if not cfg['my_loss'] else 
         self.optimizer = torch.optim.AdamW(Parameters)#, eps=1.0) #Change this...?
-        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=10, eta_min=0.0005)
+        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs, eta_min=0.0005)
         #self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[1,4,7], gamma=0.5)
         #self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=2, gamma=0.5)
         #self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.5)
@@ -139,7 +155,7 @@ class Trainer(object):
         self.test_eval = cfg['test_eval']
         
         #Set the Logger so we know what's going on during the training process
-        filename = "log.txt" if self.my_loss else "log7.txt"
+        filename = "log.txt" if self.my_loss else "testrun3.txt"
         self.logger = SetupLogger(name="Solace", save_dir=".", distributed_rank=0, filename=filename, mode="a+")
         self.logger.info("Applied Seed: {}".format(SEED))
         if self.my_loss:
@@ -173,7 +189,7 @@ class Trainer(object):
         torch.save(Loss.state_dict(), ProxyCHECKPOINT_PATH)
 
     def _eval(self, Test=False):
-        if False:#Test:
+        if Test:
             #Load Best Checkpoitn
             #print("Evaluating Best Model on Test Data...")
             self.logger.info("Evaluating Best Model on Test Data...")
@@ -237,6 +253,9 @@ class Trainer(object):
             self.Tr1Loader.dataset.refresh(self.model)
             self.Tr2Loader.dataset.refresh(self.model)
         
+        
+        #self.logger.info("Current Loss Scale Term: {}".format(self.Loss.s))
+        #input()
         """
         self.Loss._UpdateParameters(self.warpcfg['followup'])
         #self.optimizer.param_groups[0]['lr'] = self.warpcfg['followup']['learning_rate']
@@ -246,6 +265,7 @@ class Trainer(object):
 
         #Best_Epoch = 1 #Temporarily removed for now, can add back in later.
         LossQueue = 100*[0.0]
+        LossQueue2 = 100*[0.0]
         iters_per_epoch = len(self.Tr1Loader)
         #iters_per_epoch = int((self.batch_size/(self.n_batch_classes*self.n_class_samples))*len(self.Tr1Loader))
         synchronize = torch.cuda.synchronize if torch.cuda.is_available() else lambda: None
@@ -283,8 +303,11 @@ class Trainer(object):
                 assert (Loss == Loss).all(), "Nans!!!"
                 #Running Average of Loss
                 LossQueue[-1] = LossDefault.item()#Loss.item()# / 100
+                LossQueue2[-1] = Loss.item()#Loss.item()# / 100
                 LossQueue = LossQueue[-1:] + LossQueue[:-1]
+                LossQueue2 = LossQueue2[-1:] + LossQueue2[:-1]
                 running_avg = sum(LossQueue) / min(100,self.iteration)
+                running_avg2 = sum(LossQueue2) / min(100,self.iteration)
                 
                 #Backward
                 self.optimizer.zero_grad()
@@ -301,18 +324,28 @@ class Trainer(object):
                     timecheck2 = time.time()
                     timeleft = ((timecheck2 - timecheck1) / (i + 1))*(iters_per_epoch - i - 1)
                     eta = str(datetime.timedelta(seconds=int(timeleft)))
-                    self.logger.info("Epoch: {:d}/{:d} eta: {} || Iteration: {:d} Lr: {:.6f} || LossLr: {:.4f} || Current Loss: {:.4f}".format(
+                    self.logger.info("Epoch: {:d}/{:d} eta: {} || Iteration: {:d} Lr: {:.6f} || LossLr: {:.4f} || Default Loss: {:.4f} || Warp Loss: {:.4f}".format(
                             epoch, self.epochs, eta,
                             self.iteration,
                             self.optimizer.param_groups[0]['lr'],
                             self.optimizer.param_groups[2]['lr'],
-                            running_avg))
+                            running_avg,
+                            running_avg2))
             
             self.lr_scheduler.step()
+            #if self.epoch % 2 == 0:
+            if self.epoch in {1,4,8}:
+                #input("Adjusting Shift Parameter...")
+                self.Loss.shift *= 0.5
+            #if self.epoch == 6:
+            #    self.Loss.shift *= -1
+            #if self.epoch in {7,9}:
+            #    self.Loss.shift *= 2.0
+            self.logger.info("Current Loss Scale Term: {}".format(self.Loss.s.item()))
             
             #Run evalution if enough epochs have passed
             if epoch % self.epochs_per_eval == 0:
-                final_results_dev, final_results_eval = 1.0, 1.0#self._eval()
+                final_results_dev, final_results_eval = self._eval()
                 
                 #Add lines here to log the result/keep track of the best results so far...
                 Score = np.mean(final_results_dev)
@@ -320,7 +353,7 @@ class Trainer(object):
                     Best_score = Score
                     Best_epoch = epoch
                 
-                self._checkpoint(model_name="Best_model.pth", proxy_name="Best_weights.pth")
+                    self._checkpoint(model_name="Best_model.pth", proxy_name="Best_weights.pth")
                 
             if epoch % self.epochs_per_ckpt == 0:
                 #print("Iteration:",self.iteration)
@@ -354,7 +387,7 @@ class Trainer(object):
             final_results_dev, final_results_eval = self._eval(Test=True)
         
         #Training is finished
-        self.logger.info("Trained for {:d} epochs. Goodbye.".format(self.epochs))
+        self.logger.info("Trained for {:d} epochs. Goodbye.\n".format(self.epochs))
         #input("Press ENTER to continue...")
 
 def main(Args):

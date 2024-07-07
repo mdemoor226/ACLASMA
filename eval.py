@@ -231,6 +231,7 @@ def evaluate_dev(Preds, metadata, logger):
     source_unknown = metadata['Sources']['Unknown']
     categories = metadata['categories']['Eval']
     le = metadata['label_encoder']
+    Verbose = metadata['verbose']
     
     aucs = []
     p_aucs = []
@@ -246,8 +247,12 @@ def evaluate_dev(Preds, metadata, logger):
         aucs.append(auc)
         p_auc = roc_auc_score(y_true, y_pred, max_fpr=0.1)
         p_aucs.append(p_auc)
-        print('AUC for category ' + str(cat) + ': ' + str(auc * 100))
-        print('pAUC for category ' + str(cat) + ': ' + str(p_auc * 100))
+        if Verbose:
+            logger.info('AUC for category ' + str(cat) + ': ' + str(auc * 100))
+            logger.info('pAUC for category ' + str(cat) + ': ' + str(p_auc * 100))
+        else:
+            print('AUC for category ' + str(cat) + ': ' + str(auc * 100))
+            print('pAUC for category ' + str(cat) + ': ' + str(p_auc * 100))
 
         source_all = np.concatenate([source_eval[eval_labels == le.transform([cat])],
                                      source_unknown[unknown_labels == le.transform([cat])]], axis=0)
@@ -255,22 +260,36 @@ def evaluate_dev(Preds, metadata, logger):
         p_auc = roc_auc_score(y_true[source_all], y_pred[source_all], max_fpr=0.1)
         aucs_source.append(auc)
         p_aucs_source.append(p_auc)
-        print('AUC for source domain of category ' + str(cat) + ': ' + str(auc * 100))
-        print('pAUC for source domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        if Verbose:
+            logger.info('AUC for source domain of category ' + str(cat) + ': ' + str(auc * 100))
+            logger.info('pAUC for source domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        else:
+            print('AUC for source domain of category ' + str(cat) + ': ' + str(auc * 100))
+            print('pAUC for source domain of category ' + str(cat) + ': ' + str(p_auc * 100))
         auc = roc_auc_score(y_true[~source_all], y_pred[~source_all])
         p_auc = roc_auc_score(y_true[~source_all], y_pred[~source_all], max_fpr=0.1)
         aucs_target.append(auc)
         p_aucs_target.append(p_auc)
-        print('AUC for target domain of category ' + str(cat) + ': ' + str(auc * 100))
-        print('pAUC for target domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        if Verbose:
+            logger.info('AUC for target domain of category ' + str(cat) + ': ' + str(auc * 100))
+            logger.info('pAUC for target domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        else:
+            print('AUC for target domain of category ' + str(cat) + ': ' + str(auc * 100))
+            print('pAUC for target domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+
     print('####################')
     aucs = np.array(aucs)
     p_aucs = np.array(p_aucs)
     for cat in categories:
         mean_auc = hmean(aucs[np.array([eval_id.split('_')[0] for eval_id in np.unique(eval_ids)]) == cat])
-        print('mean AUC for category ' + str(cat) + ': ' + str(mean_auc * 100))
         mean_p_auc = hmean(p_aucs[np.array([eval_id.split('_')[0] for eval_id in np.unique(eval_ids)]) == cat])
-        print('mean pAUC for category ' + str(cat) + ': ' + str(mean_p_auc * 100))
+        if Verbose:
+            logger.info('mean AUC for category ' + str(cat) + ': ' + str(mean_auc * 100))
+            logger.info('mean pAUC for category ' + str(cat) + ': ' + str(mean_p_auc * 100))
+        else:
+            print('mean AUC for category ' + str(cat) + ': ' + str(mean_auc * 100))
+            print('mean pAUC for category ' + str(cat) + ': ' + str(mean_p_auc * 100))
+    
     #print('####################')
     logger.info('####################')
     for cat in categories:
@@ -323,6 +342,7 @@ def evaluate_eval(Preds, metadata, logger):
     le = metadata['label_encoder']
     data_year = metadata['data_year']
     year = metadata['data_year'][2:6]
+    Verbose = metadata['verbose']
 
     aucs = []
     p_aucs = []
@@ -341,30 +361,50 @@ def evaluate_eval(Preds, metadata, logger):
         #code.interact(local=locals())
         p_auc = roc_auc_score(y_true, y_pred, max_fpr=0.1)
         p_aucs.append(p_auc)
-        print('AUC for category ' + str(cat) + ': ' + str(auc * 100))
-        print('pAUC for category ' + str(cat) + ': ' + str(p_auc * 100))
+        if Verbose:
+            logger.info('AUC for category ' + str(cat) + ': ' + str(auc * 100))
+            logger.info('pAUC for category ' + str(cat) + ': ' + str(p_auc * 100))
+        else:
+            print('AUC for category ' + str(cat) + ': ' + str(auc * 100))
+            print('pAUC for category ' + str(cat) + ': ' + str(p_auc * 100))
+        
         source_all = np.array(pd.read_csv(data_year + 
             './dcase' + year + '_evaluator/ground_truth_domain/ground_truth_' + cat.split('_')[0] + '_section_' + cat.split('_')[1] + '_test.csv', header=None).iloc[:, 1] == 0)
         auc = roc_auc_score(y_true[source_all], y_pred[source_all])
         p_auc = roc_auc_score(y_true[source_all], y_pred[source_all], max_fpr=0.1)
         aucs_source.append(auc)
         p_aucs_source.append(p_auc)
-        print('AUC for source domain of category ' + str(cat) + ': ' + str(auc * 100))
-        print('pAUC for source domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        if Verbose:
+            logger.info('AUC for source domain of category ' + str(cat) + ': ' + str(auc * 100))
+            logger.info('pAUC for source domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        else:
+            print('AUC for source domain of category ' + str(cat) + ': ' + str(auc * 100))
+            print('pAUC for source domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        
         auc = roc_auc_score(y_true[~source_all], y_pred[~source_all])
         p_auc = roc_auc_score(y_true[~source_all], y_pred[~source_all], max_fpr=0.1)
         aucs_target.append(auc)
         p_aucs_target.append(p_auc)
-        print('AUC for target domain of category ' + str(cat) + ': ' + str(auc * 100))
-        print('pAUC for target domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        if Verbose:
+            logger.info('AUC for target domain of category ' + str(cat) + ': ' + str(auc * 100))
+            logger.info('pAUC for target domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        else:
+            print('AUC for target domain of category ' + str(cat) + ': ' + str(auc * 100))
+            print('pAUC for target domain of category ' + str(cat) + ': ' + str(p_auc * 100))
+        
     print('####################')
     aucs = np.array(aucs)
     p_aucs = np.array(p_aucs)
     for cat in categories:
         mean_auc = hmean(aucs[np.array([test_id.split('_')[0] for test_id in np.unique(test_ids)]) == cat])
-        print('mean AUC for category ' + str(cat) + ': ' + str(mean_auc * 100))
         mean_p_auc = hmean(p_aucs[np.array([test_id.split('_')[0] for test_id in np.unique(test_ids)]) == cat])
-        print('mean pAUC for category ' + str(cat) + ': ' + str(mean_p_auc * 100))
+        if Verbose:
+            logger.info('mean AUC for category ' + str(cat) + ': ' + str(mean_auc * 100))
+            logger.info('mean pAUC for category ' + str(cat) + ': ' + str(mean_p_auc * 100))
+        else:
+            print('mean AUC for category ' + str(cat) + ': ' + str(mean_auc * 100))
+            print('mean pAUC for category ' + str(cat) + ': ' + str(mean_p_auc * 100))
+
     #print('####################')
     logger.info('####################')
     for cat in categories:

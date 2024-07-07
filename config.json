@@ -1,5 +1,5 @@
 {
-    "epochs": "5",
+    "epochs": "10",
     "epochs_per_ckpt": "1",
     "epochs_per_eval": "1",
     "iterations_per_log": "10",
@@ -8,20 +8,20 @@
     "class_balanced_sampling": "False",
     "classes_per_batch": "8",
     "init_eval": "False",
-    "test_eval": "False",
+    "test_eval": "True",
     "learnable_loss": "False",
     "learning_rate": "0.002",
-    "loss_learning_rate": "0.000",
-    "weight_decay": "0.0000",
-    "loss_weight_decay": "0.000",
+    "loss_learning_rate": "0.00",
+    "weight_decay": "0.000",
+    "loss_weight_decay": "0.00",
     "my_loss": "False",
-    "adaptive_scale": "False",
+    "adaptive_scale": "True",
     "scale": "8",
     "warp": "True",
-    "shift_value": "10",
-    "num_sub_clusters": "1",
+    "shift_value": "13",
+    "num_sub_clusters": "16",
     "dimensions": "128",
-    "mdam": "False",
+    "mdam": "True",
     "target_sr": "16000",
     "melcfg": {
         "sample_rate": "16000",
@@ -33,7 +33,7 @@
 	"log_mel": "False"
     },
     "mixupcfg": {
-	"mixup": "False",
+	"mixup": "True",
 	"alpha": "0.5"
     },
     "smotecfg": {
