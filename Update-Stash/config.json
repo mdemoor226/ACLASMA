@@ -1,0 +1,70 @@
+{
+    "epochs": "5",
+    "epochs_per_ckpt": "1",
+    "epochs_per_eval": "1",
+    "iterations_per_log": "20",
+    "data_year": "2022",
+    "batch_size": "64",
+    "class_balanced_sampling": "True",
+    "classes_per_batch": "8",
+    "init_eval": "False",
+    "test_eval": "False",
+    "learnable_loss": "True",
+    "learning_rate": "0.001",
+    "loss_learning_rate": "0.001",
+    "weight_decay": "0.0001",
+    "loss_weight_decay": "0.00",
+    "my_loss": "False",
+    "adaptive_scale": "False",
+    "scale": "10",
+    "warp": "True",
+    "shift_value": "12",
+    "num_sub_clusters": "16",
+    "dimensions": "128",
+    "mdam": "False",
+    "target_sr": "16000",
+    "melcfg": {
+        "sample_rate": "16000",
+	"fft_size": "1024",
+	"hop_size": "512",
+	"f_min": "200",
+	"f_max": "8000",
+	"mel_bins": "128",
+	"log_mel": "False"
+    },
+    "mixupcfg": {
+	"mixup": "True",
+	"alpha": "0.5"
+    },
+    "smotecfg": {
+	"smote": "False",
+	"refresh": "False",
+	"init_refresh": "False",
+	"refresh_rate": "5",
+	"k_neighbors": "5",
+	"ignore_topk": "20"
+    },
+    "evalcfg": {
+	"knn": "False",
+	"k_value": "50"
+    },
+    "warpcfg": {
+	"warp": "True",
+	"temp": "8.0",
+	"alpha": "80.0",
+	"k1": "0.85",
+	"k2": "1.05",
+	"margin": "1.15",
+	"followup": {
+            "epochs": "7",
+	    "learning_rate": "0.01",
+	    "proxy_learning_rate": "0.1",
+	    "temp": "1.0",
+	    "alpha": "20.25",
+	    "k1": "0.85",
+	    "k2": "1.25"
+	}
+    }
+
+}
+
