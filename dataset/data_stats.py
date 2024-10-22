@@ -7,17 +7,16 @@ import librosa
 from collections import defaultdict
 from tqdm import tqdm
 
-def get_stats(target_sr=16000, data_year='./2022-data/', source_dir="./"):
+def get_stats(data_year='./2022-data/', source_dir="./"):
     print('Loading train data')
     Evcategories = os.listdir(source_dir + data_year + "dev_data")
     Tscategories = os.listdir(source_dir + data_year + "eval_data")
     if data_year=='./2023-data/':
         Trcategories = Evcategories + Tscategories 
-        RawShape = 288000
     else:
         Trcategories = Evcategories.copy()
-        RawShape = 10*target_sr
     
+    RawShape = 288000
     train_raw = np.empty((0, RawShape), dtype=np.float32)
     Dicts = [data_year + 'dev_data/', data_year + 'eval_data/']
     eps = 1e-12
@@ -36,13 +35,10 @@ def get_stats(target_sr=16000, data_year='./2022-data/', source_dir="./"):
                     file_path = source_dir + dict + category + "/train/" + file
                     wav, fs = sf.read(file_path)
                     raw = librosa.core.to_mono(wav.transpose()).transpose()
-                    if data_year == './2023-data/':
-                        new_size = 288000
-                        reps = int(np.ceil(new_size/raw.shape[0]))
-                        offset = np.random.randint(low=0, high=int(reps*raw.shape[0]-new_size+1))
-                        raw = np.tile(raw, reps=reps)[offset:offset+new_size].astype(np.float32)
-                    else:
-                        raw = raw[:10 * target_sr]#.reshape(1,-1)
+                    new_size = 288000
+                    reps = int(np.ceil(new_size/raw.shape[0]))
+                    offset = np.random.randint(low=0, high=int(reps*raw.shape[0]-new_size+1))
+                    raw = np.tile(raw, reps=reps)[offset:offset+new_size].astype(np.float32)
                     train_raw_list.append(raw)
             raw_arrays[dict] = np.array(train_raw_list, dtype=np.float32)
         train_raw = np.concatenate((train_raw, np.concatenate(list(raw_arrays.values()), axis=0)), axis=0)

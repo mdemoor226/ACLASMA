@@ -107,8 +107,6 @@ class MDAM(nn.Module):
         self.gamma = torch.nn.Parameter(torch.Tensor([0.75]), requires_grad=True) 
     
     def forward(self, In):
-        #import code
-        #code.interact(local=locals())
         #Input Shape In: (B,C,Frames,NumSamples) ---> (B,C,Time,Frequency)
         identity = In
         CAtt = self.CAtt(In) #Out Shape: (B,C,1,1)
@@ -178,14 +176,12 @@ class KWUpperBlock(nn.Module):
         identity = x
         out = self.relu(x)
         
-        #Use what works best
-        out = self.conv1(out) #Needs padding too I think...
+        out = self.conv1(out) 
         #out = self.conv1(self._pad(out))
         out = self.bn2(out)
         out = self.relu(out)
         out = self.conv2(out)
         
-        #n,c,h,w = identity.shape #Correct?
         #skip = self.maxpool(self._pad(identity))
         skip = self.maxpool(self.maxpoolpad(identity))
         skip = self.smallconv(skip)
@@ -323,7 +319,7 @@ class KWInitialBlock(nn.Module):
         self.Spec = Spectrogram(melcfg['sample_rate'], melcfg['fft_size'], melcfg['hop_size'], melcfg['device'], 
                                 melcfg['f_min'], melcfg['f_max'], n_mels=melcfg['mel_bins'], log_mel=melcfg['log_mel'])
         #The input value for BatchNorm1d below was determined by debugging. Add a method here to formally calculate the value. 
-        self.SpecBN = nn.BatchNorm1d(inplanes)#I believe the normalization must be done across the "frames" dimension...
+        self.SpecBN = nn.BatchNorm1d(inplanes)
         
         self.inconv = Conv2dSamePadding(1, planes, kernel_size=7, stride=2, bias=False, dilation=dilation)
         self.bn = norm_layer(planes)
@@ -336,14 +332,11 @@ class KWInitialBlock(nn.Module):
         self.in_shape = in_shape
     
     def forward(self, In: Tensor) -> Tensor:
-        #print(In.dtype)
         # magnitude
         batch = In.shape[0]
         x = self.Spec(In.view(batch,self.in_shape,))
-        #x = x - torch.mean(x, dim=1, keepdim=True) #I think this is correct ... now, I believe
-        #print(x.dtype)
         x = self.SpecBN(x)
-        x = self.inconv(x.unsqueeze(1))#.unsqueeze(1) #Try Both of These? May have to edit the arguments in the constructor.
+        x = self.inconv(x.unsqueeze(1))
         x = self.bn(x)
         x = self.relu(x)
         out = self.maxpool(x)
@@ -367,8 +360,7 @@ class KWFFT(nn.Module):
         self.conv3 = Conv1dSamePadding(planes, planes, kernel_size=16, stride=4, bias=False, dilation=dilation)
         self.convbn3 = norm_layer(planes)
         self.relu = nn.ReLU(inplace=True)
-        self.fc1 = nn.Linear(fc_inplanes, planes, bias=False) #1280 number was obtained from technical report... #And it looks like it was right (Update: 2/7/24)
-        #self.fc1 = nn.Linear(1280, planes, bias=False) #1280 number was obtained from technical report... #And it looks like it was right (Update: 2/7/24)
+        self.fc1 = nn.Linear(fc_inplanes, planes, bias=False) 
         self.bn1 = norm_layer(planes)
         self.fc2 = nn.Linear(planes, planes, bias=False)
         self.bn2 = norm_layer(planes)
@@ -380,8 +372,6 @@ class KWFFT(nn.Module):
     def forward(self, In: Tensor) -> Tensor:
         #Pre-Processing
         batch = In.shape[0]
-        #In_complex = torch.view_as_complex(torch.cat([In.unsqueeze(-1), torch.zeros_like(In.unsqueeze(-1))], dim=-1)) #Is the complex cast really necessary? (I don't think so but keeping for now).
-        #x = torch.abs(torch.fft.fft(In_complex, dim=1)[:, :(self.raw_dim // 2) + 1]).view(batch,1,-1) #FFT dim is 1 if Batch dimension exists, otherwise 0. Assuming it exists for now.
         x = torch.abs(torch.fft.rfft(In, dim=1)).view(batch,1,-1)
 
         #DFT-Model
@@ -413,18 +403,11 @@ class Wilkinghoff(nn.Module):
         self.blocks = 5
         self.dilation = 1
         self.stride = 1
-        if data_year == './2023-data/':
-            self.inplanes = 561
-            self.in_shape = 288000
-            factor_dims = 4096 #self.inplanes*(2**(self.blocks - 2)) # <--- Why did I change this/comment it out again?
-            self.APlanes = [140, 128]
-            self.TPlanes = [70, 35, 18] #These Values were determined by debugging. If desired, update this method to calculate these values directly.
-        else:
-            self.inplanes = 311
-            self.in_shape = 160000
-            factor_dims = 2048 #self.inplanes*(2**(self.blocks - 2)) # <--- Why did I change this/comment it out again?
-            self.APlanes = [77, 128]
-            self.TPlanes = [39, 20, 10] #These Values were determined by debugging. If desired, update this method to calculate these values directly.
+        self.inplanes = 561
+        self.in_shape = 288000
+        factor_dims = 4096 
+        self.APlanes = [140, 128]
+        self.TPlanes = [70, 35, 18] #These Values were determined by debugging. If desired, update this method to calculate these values directly.
         self.FPlanes = [64, 32, 16] #These too...
         self.planes = 16
         self.melcfg = melcfg
@@ -434,12 +417,11 @@ class Wilkinghoff(nn.Module):
         self.embpoolpad = nn.ZeroPad2d(reduce(__add__,[(k // 2 + (k - 2 * (k // 2)) - 1, k // 2) for k in (1, 10)]))
         self.emb_pool = nn.MaxPool2d((10, 1))#, padding=(5,0))
         self.bnout = nn.BatchNorm1d(factor_dims)
-        #self.LNorm = nn.LayerNorm(factor_dims, elementwise_affine=False)
         self.emb_mel = nn.Linear(factor_dims, out_dims, bias=True)
         
         #FFT-Network and Embedder
         self.fft_dims = 128
-        self.fft_fcin = 2304 if data_year == './2023-data/' else 1280
+        self.fft_fcin = 2304
         self.fft_network = self._make_fft_network(self.fft_dims, self.fft_fcin)
         self.emb_fft = nn.Linear(self.fft_dims, out_dims, bias=True)
         for m in self.modules():
@@ -453,20 +435,16 @@ class Wilkinghoff(nn.Module):
                 #nn.init.constant_(m.bias, 0)
         
         #Data Normalization/Standardization Stats
-        Target_sr = self.melcfg['sample_rate']
         if os.path.isfile(data_year + "saved_data/data_mean.npy"):
             mean = np.load(data_year + "saved_data/data_mean.npy")
             std = np.load(data_year + "saved_data/data_std.npy")
-            if data_year == './2022-data/' and mean.shape[0] / Target_sr != 10:
-                print("Error, saved dataset statistics are not compatible. Updating now... (Make sure you have 64+ gbs of RAM")
-                mean, std = get_stats(Target_sr, data_year)
         else:
             mean, std = get_stats(Target_sr, data_year)
         
         self.data_mean = torch.nn.Parameter(torch.from_numpy(mean), requires_grad=False)
         self.data_std = torch.nn.Parameter(torch.from_numpy(std), requires_grad=False)
         
-        print(":)")
+        #print(":)")
         self._initialize_weights()
 
         #NEEDS EDITING IF GOING TO BE USED
@@ -515,7 +493,6 @@ class Wilkinghoff(nn.Module):
         In = (In - self.data_mean) / self.data_std
         
         #Log-Mel Spectrogram Network
-        #print(In.dtype)
         x = self.mel_network(In)
         x = self.emb_pool(self.embpoolpad(x))
         x = self.bnout(torch.flatten(x, start_dim=1))

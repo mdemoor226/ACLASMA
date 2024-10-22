@@ -5,24 +5,32 @@
     "iterations_per_log": "10",
     "data_year": "2023",
     "batch_size": "64",
-    "class_balanced_sampling": "False",
+    "class_balanced_sampling": "True",
     "classes_per_batch": "8",
     "init_eval": "False",
     "test_eval": "True",
+    "pre_trained_loss": "True",
     "learnable_loss": "False",
-    "learning_rate": "0.002",
-    "loss_learning_rate": "0.00",
+    "learning_rate": "0.001",
+    "loss_learning_rate": "0.000",
     "weight_decay": "0.000",
     "loss_weight_decay": "0.00",
-    "my_loss": "False",
-    "adaptive_scale": "True",
-    "scale": "8",
-    "warp": "True",
-    "shift_value": "13",
     "num_sub_clusters": "16",
     "dimensions": "128",
     "mdam": "True",
-    "target_sr": "16000",
+    "adaptive_scale": "True",
+    "scale": "8",
+    "warp": "True",
+    "shiftcfg": {
+        "shift_value": "32",
+	"shift_decay": "True",
+	"decay_factor": "0.5",
+	"decay_epochs": "[1,4,8]"
+    },
+    "mixupcfg": {
+	"mixup": "False",
+	"alpha": "0.5"
+    },
     "melcfg": {
         "sample_rate": "16000",
 	"fft_size": "1024",
@@ -31,40 +39,6 @@
 	"f_max": "8000",
 	"mel_bins": "128",
 	"log_mel": "False"
-    },
-    "mixupcfg": {
-	"mixup": "True",
-	"alpha": "0.5"
-    },
-    "smotecfg": {
-	"smote": "False",
-	"refresh": "False",
-	"init_refresh": "False",
-	"refresh_rate": "5",
-	"k_neighbors": "5",
-	"ignore_topk": "20"
-    },
-    "evalcfg": {
-	"knn": "False",
-	"k_value": "50"
-    },
-    "warpcfg": {
-	"warp": "True",
-	"temp": "8.0",
-	"alpha": "80.0",
-	"k1": "0.85",
-	"k2": "1.05",
-	"margin": "1.15",
-	"followup": {
-            "epochs": "7",
-	    "learning_rate": "0.01",
-	    "proxy_learning_rate": "0.1",
-	    "temp": "1.0",
-	    "alpha": "20.25",
-	    "k1": "0.85",
-	    "k2": "1.25"
-	}
     }
-
 }
 

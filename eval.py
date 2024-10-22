@@ -9,19 +9,12 @@ from sklearn.cluster import KMeans
 import warnings
 warnings.filterwarnings("ignore")
 
-def evaluate(embeddings, Preds, metadata, logger, evalcfg, n_subclusters=16, Test=False):#labels, Sources, IDs, Preds, le, n_subclusters=16)
-    if evalcfg['knn']:
-        #pred_eval, pred_unknown = pred_knn(Preds, embeddings, metadata, evalcfg)
-        pred_eval, pred_unknown, pred_test = pred_knn(Preds, embeddings, metadata, evalcfg)
+def evaluate(embeddings, Preds, metadata, logger, n_subclusters=16, Test=False):#labels, Sources, IDs, Preds, le, n_subclusters=16)
+    if Test:
+        pred_eval, pred_unknown, pred_test = test_cos(Preds, embeddings, metadata, n_subclusters)
         Preds['Test'] = pred_test
     else:
-        if Test:
-            pred_eval, pred_unknown, pred_test = test_cos(Preds, embeddings, metadata, n_subclusters)
-            #import code
-            #code.interact(local=locals())
-            Preds['Test'] = pred_test
-        else:
-            pred_eval, pred_unknown = pred_cos(Preds, embeddings, metadata, n_subclusters)
+        pred_eval, pred_unknown = pred_cos(Preds, embeddings, metadata, n_subclusters)
 
     Preds['Eval'] = pred_eval
     Preds['Unknown'] = pred_unknown
@@ -43,88 +36,6 @@ def evaluate(embeddings, Preds, metadata, logger, evalcfg, n_subclusters=16, Tes
     logger.info('>>>> finished! <<<<<')
     logger.info('####################')
     return final_results_dev, final_results_eval
-
-def pred_knn(Preds, embeddings, metadata, evalcfg):
-    train_labels = metadata['Labels']['Train']
-    eval_labels = metadata['Labels']['Eval']
-    unknown_labels = metadata['Labels']['Unknown']
-    test_labels = metadata['Labels']['Test']
-    le = metadata['label_encoder']
-
-    source_train = metadata['Sources']['Train']
-    pred_eval = Preds['Eval']
-    pred_unknown = Preds['Unknown']
-    pred_test = Preds['Test']
-
-    # extract embeddings
-    x_train_ln = embeddings['Train']
-    x_eval_ln = embeddings['Eval']
-    x_unknown_ln = embeddings['Unknown']
-    x_test_ln = embeddings['Test']
-    
-    for j, lab in tqdm(enumerate(np.unique(train_labels))):
-        if np.sum(eval_labels==lab) == 0:
-            continue
-        
-        dist_eval = pairwise_knn(x_eval_ln[eval_labels == lab], x_train_ln[(train_labels == lab)], k=evalcfg['k_value'])[0]
-        score_eval1 = np.mean(dist_eval[:,:evalcfg['k_value']], axis=1)
-        #score_eval2 = np.median(dist_eval[:,:evalcfg['k_value']], axis=1)
-        #import code
-        #code.interact(local=locals())
-        score_eval = score_eval1
-        dist_unknown = pairwise_knn(x_unknown_ln[unknown_labels == lab], x_train_ln[(train_labels == lab)], k=evalcfg['k_value'])[0]
-        score_unknown1 = np.mean(dist_unknown[:,:evalcfg['k_value']], axis=1)
-        #score_unknown2 = np.median(dist_unknown[:,:evalcfg['k_value']], axis=1)
-        #import code
-        #code.interact(local=locals())
-        score_unknown = score_unknown1
-        dist_test = pairwise_knn(x_test_ln[test_labels == lab], x_train_ln[(train_labels == lab)], k=evalcfg['k_value'])[0]
-        score_test = np.mean(dist_test[:,:evalcfg['k_value']], axis=1)
-        pred_eval[eval_labels == lab, j] = score_eval
-        pred_unknown[unknown_labels == lab, j] = score_unknown
-        pred_test[test_labels == lab, j] = score_test
-    
-    return pred_eval, pred_unknown, pred_test
-
-def pred_knn_subcluster(Preds, embeddings, metadata, evalcfg, n_subclusters=16):
-    train_labels = metadata['Labels']['Train']
-    eval_labels = metadata['Labels']['Eval']
-    unknown_labels = metadata['Labels']['Unknown']
-    #test_labels = metadata['Labels']['Test']
-    le = metadata['label_encoder']
-
-    source_train = metadata['Sources']['Train']
-    pred_eval = Preds['Eval']
-    pred_unknown = Preds['Unknown']
-    #pred_test = Preds['Test']
-
-    # extract embeddings
-    x_train_ln = embeddings['Train']
-    x_eval_ln = embeddings['Eval']
-    x_unknown_ln = embeddings['Unknown']
-    #x_test_ln = embeddings['Test']
-    
-    for j, lab in tqdm(enumerate(np.unique(train_labels))):
-        if np.sum(eval_labels==lab) == 0:
-            continue
-        
-        # prepare mean values for domains
-        kmeans = KMeans(n_clusters=n_subclusters, random_state=0).fit(x_train_ln[(train_labels == lab)])
-        means_source_ln = kmeans.cluster_centers_
-        means_target_ln = x_train_ln[~source_train * (train_labels == lab)]
-        means_total = np.concatenate((means_source_ln, means_target_ln), axis=-1)
-
-        dist_eval = pairwise_knn(x_eval_ln[eval_labels == lab], means_total, k=evalcfg['k_value'])[0]
-        score_eval = np.mean(dist_eval[:,:evalcfg['k_value']], axis=1)
-        dist_unknown = pairwise_knn(x_unknown_ln[unknown_labels == lab], means_total, k=evalcfg['k_value'])[0]
-        score_unknown = np.mean(dist_unknown[:,:evalcfg['k_value']], axis=1)
-        #dist_test = pairwise_knn(x_test_ln[test_labels == lab], x_train_ln[(train_labels == lab)], k=evalcfg['k_value'])[0]
-        #score_test = np.mean(dist_test[:,:evalcfg['k_value']], axis=1)
-        pred_eval[eval_labels == lab, j] = score_eval
-        pred_unknown[unknown_labels == lab, j] = score_unknown
-        #pred_test[test_labels == lab, j] = score_test
-    
-    return pred_eval, pred_unknown#, pred_test
 
 def pred_cos(Preds, embeddings, metadata, n_subclusters=16):
     train_labels = metadata['Labels']['Train']
@@ -201,18 +112,6 @@ def test_cos(Preds, embeddings, metadata, n_subclusters=16):
         if np.sum(test_labels==lab)>0:
             pred_test[test_labels == lab, j] = test_cos
     return pred_eval, pred_unknown, pred_test
-
-#Borrowed from ProxyNCA++ repository
-def pairwise_knn(X, Y, k):
-    """ 
-    X : [nb_samples x nb_features], e.g. 100 x 64 (embeddings)
-    k : for each sample, assign target labels of k nearest points
-    """
-    distances = pairwise.euclidean_distances(X,Y)
-
-    # get nearest points
-    indices = np.argsort(distances, axis = 1)[:,:k]# 1 : k + 1] 
-    return distances, indices
 
 #eval_labels, unknown_labels, eval_ids, pred_eval, pred_unknown, le, source_eval, source_unknown, categories
 def evaluate_dev(Preds, metadata, logger):

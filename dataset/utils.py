@@ -39,8 +39,7 @@ def prepare_data(year='./2022-data/', target_sr=16000):
     Tscategories = os.listdir(year + "eval_data")
     Trcategories = Evcategories + Tscategories if year=='./2023-data/' else Evcategories.copy()
 
-    if os.path.isfile(year + './saved_data/train_ids.npy'):#' + str(target_sr) + '_train_raw.npy'):
-        #train_raw = np.load('./saved_data/' + str(target_sr) + '_train_raw.npy')
+    if os.path.isfile(year + './saved_data/train_ids.npy'):
         train_ids = np.load(year + 'saved_data/train_ids.npy')
         train_files = np.load(year + 'saved_data/train_files.npy')
         train_atts = np.load(year + 'saved_data/train_atts.npy')
@@ -49,7 +48,6 @@ def prepare_data(year='./2022-data/', target_sr=16000):
         if not os.path.exists(year + 'saved_data'):
             os.mkdir(year + 'saved_data')
 
-        #train_raw = np.empty((0, 10*target_sr), dtype=np.float32)
         train_ids = []
         train_files = []
         train_atts = []
@@ -64,24 +62,15 @@ def prepare_data(year='./2022-data/', target_sr=16000):
             else:
                 dicts = Dicts.copy()
             
-            #raw_arrays = defaultdict(list)
             for dict in dicts:
-                #print(dict + category + "/train")
-                #import code
-                #code.interact(local=locals())
                 train_raw_list = []
                 for count, file in tqdm(enumerate(os.listdir(dict + category + "/train")), total=len(os.listdir(dict + category + "/train"))):
                     if file.endswith(".wav"):
                         file_path = dict + category + "/train/" + file
-                        #wav, fs = sf.read(file_path)
-                        #raw = librosa.core.to_mono(wav.transpose()).transpose()[:10 * target_sr]#.reshape(1,-1)
-                        #train_raw_list.append(raw)
                         train_ids.append(category + '_' + file.split('_')[1])
                         train_files.append(file_path)
                         train_domains.append(file.split('_')[2])
                         train_atts.append('_'.join(file.split('.wav')[0].split('_')[6:]))
-                #raw_arrays[dict] = np.array(train_raw_list, dtype=np.float32)
-            #train_raw = np.concatenate((train_raw, np.concatenate(list(raw_arrays.values()), axis=0)), axis=0)
         # reshape arrays and store
         train_ids = np.array(train_ids)
         train_files = np.array(train_files)
@@ -92,13 +81,12 @@ def prepare_data(year='./2022-data/', target_sr=16000):
         np.save(year + 'saved_data/train_files.npy', train_files)
         np.save(year + 'saved_data/train_atts.npy', train_atts)
         np.save(year + 'saved_data/train_domains.npy', train_domains)
-        #np.save('./saved_data/' + str(target_sr) + '_train_raw.npy', train_raw)
     
     print("Success!")
     # load evaluation data
     print('Loading evaluation data')
-    if os.path.isfile(year + 'saved_data/' + str(target_sr) + '_eval_raw.npy'):
-        eval_raw = np.load(year + 'saved_data/' + str(target_sr) + '_eval_raw.npy')
+    if os.path.isfile(year + 'saved_data/_eval_raw.npy'):
+        eval_raw = np.load(year + 'saved_data/_eval_raw.npy')
         eval_ids = np.load(year + 'saved_data/eval_ids.npy')
         eval_normal = np.load(year + 'saved_data/eval_normal.npy')
         eval_files = np.load(year + 'saved_data/eval_files.npy')
@@ -119,10 +107,7 @@ def prepare_data(year='./2022-data/', target_sr=16000):
                     file_path = year + "dev_data/" + category + "/test/" + file
                     wav, fs = sf.read(file_path)
                     raw = librosa.core.to_mono(wav.transpose()).transpose()[:10 * target_sr]
-                    if year=='./2023-data/':
-                        raw = adjust_size(raw, 288000)
-                    else:
-                        raw = raw[:10 * target_sr]
+                    raw = adjust_size(raw, 288000)
                     eval_raw.append(raw)
                     eval_ids.append(category + '_' + file.split('_')[1])
                     eval_normal.append(file.split('_test_')[1].split('_')[0] == 'normal')
@@ -143,13 +128,13 @@ def prepare_data(year='./2022-data/', target_sr=16000):
         np.save(year + 'saved_data/eval_files.npy', eval_files)
         np.save(year + 'saved_data/eval_atts.npy', eval_atts)
         np.save(year + 'saved_data/eval_domains.npy', eval_domains)
-        np.save(year + 'saved_data/' + str(target_sr) + '_eval_raw.npy', eval_raw)
+        np.save(year + 'saved_data/_eval_raw.npy', eval_raw)
  
     print("Success!")
     # load test data
     print('Loading test data')
-    if os.path.isfile(year + 'saved_data/' + str(target_sr) + '_test_raw.npy'):
-        test_raw = np.load(year + 'saved_data/' + str(target_sr) + '_test_raw.npy')
+    if os.path.isfile(year + 'saved_data/_test_raw.npy'):
+        test_raw = np.load(year + 'saved_data/_test_raw.npy')
         test_ids = np.load(year + 'saved_data/test_ids.npy')
         test_files = np.load(year + 'saved_data/test_files.npy')
     else:
@@ -165,20 +150,10 @@ def prepare_data(year='./2022-data/', target_sr=16000):
                     file_path = year + "eval_data/" + category + "/test/" + file
                     wav, fs = sf.read(file_path)
                     raw = librosa.core.to_mono(wav.transpose()).transpose()
-                    #import code
-                    #code.interact(local=locals())
-                    if year=='./2023-data/':
-                        raw = adjust_size(raw, 288000)
-                    else:
-                        raw = raw[:10 * target_sr]
-                    #if count in {0, 1}:
-                    #    import code
-                    #    code.interact(local=locals())
+                    raw = adjust_size(raw, 288000)
                     test_raw.append(raw)
                     test_ids.append(category + '_' + file.split('_')[1])
                     test_files.append(file_path)
-        #import code
-        #code.interact(local=locals())
         # reshape arrays and store
         test_ids = np.array(test_ids)
         test_files = np.array(test_files)
@@ -187,8 +162,7 @@ def prepare_data(year='./2022-data/', target_sr=16000):
         print("Saving extracted data...")
         np.save(year + 'saved_data/test_ids.npy', test_ids)
         np.save(year + 'saved_data/test_files.npy', test_files)
-        np.save(year + 'saved_data/' + str(target_sr) + '_test_raw.npy', test_raw)
-
+        np.save(year + 'saved_data/_test_raw.npy', test_raw) 
     print("Success!")
     
     # encode ids as labels
@@ -245,11 +219,6 @@ def prepare_data(year='./2022-data/', target_sr=16000):
     RawShapes = {'Train': None, 'Eval': eval_raw.shape, 'Unknown': unknown_raw.shape, 'Test': test_raw.shape}
     Categories = {'Train': Trcategories, 'Eval': Evcategories, 'Test': Tscategories}
     Meta = {'categories': Categories, 'num_trclasses': num_classes_4train, 'label_encoder': le, 'IDs': IDs, 'Sources': Sources, 'Labels': Labels, 'Shapes': RawShapes}
-    #print(num_classes_4train)
-    #input("See above...")
-    #import code
-    #trclasses = train_labels_4train
-    #code.interact(local=locals())
     
     TrData = {'Data': train_files, 'Labels': train_labels_4train} 
     EvData = {'Data': eval_raw, 'Labels': eval_labels_4train}

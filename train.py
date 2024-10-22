@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 from collections import defaultdict
 from model import Wilkinghoff
-from loss import SCAdaCos, WarpLoss
+from loss import SCAdaCos
 from dataset.dataset import Data
 from dataset.utils import BalancedFullBatchSampler
 from dataset.utils import load_config, prepare_data
@@ -14,7 +14,6 @@ from Logger import SetupLogger
 from eval import evaluate
 import time
 import datetime
-#import random
 import json
 import argparse
 
@@ -24,28 +23,30 @@ parser.add_argument('--resume', default=None)
 parser.add_argument('--seed', default=None)
 parser.add_argument('--warp', default=None)
 parser.add_argument('--verbose', default=False)
+parser.add_argument('--filename', default=None)
 
 args = parser.parse_args()
 SEED = args.seed
 WARP = args.warp
 VERBOSE = args.verbose
+FILENAME = args.filename
 
 if SEED is not None:
     seed = eval(args.seed)
     #For Debugging Purposes...
+    #import random
     #seed = 1717#random.randint(0,100000) 
     #print("Seed:",seed)
     #random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    #torch.backends.cudnn.benchmark = True
-    #torch.backends.cudnn.enabled = False
     torch.backends.cudnn.deterministic = True
 
 class Trainer(object):
     def __init__(self, cfg, ckpt_path=None):
         assert cfg['data_year'] in {2022, 2023}, "Error: data year must either be '2022' or '2023'. Entered: {}".format(cfg['data_year'])
+        assert all(isinstance(Epoch, int) for Epoch in cfg['shiftcfg']['decay_epochs']), "Error: Decay Epoch values must be Integers."
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         if WARP is not None:
             cfg['warp'] = eval(WARP)
@@ -58,39 +59,35 @@ class Trainer(object):
 
         #Prepare Dataset
         data_year = "./" + str(cfg['data_year']) + "-data/"
-        TrData, EvData, UnkData, TsData, Meta = prepare_data(year=data_year, target_sr=cfg['target_sr'])
-        print("Using {} (Non-SMOTE) training samples.".format(len(TrData['Data'])))
+        TrData, EvData, UnkData, TsData, Meta = prepare_data(year=data_year)
+        print("Using {} training samples.".format(len(TrData['Data'])))
         print("Using {} validation samples.".format(EvData['Data'].shape[0]))
         
         #Train DataLoader
-        SMOTE = cfg['smotecfg']['smote']
-        self.Smote_refresh = cfg['smotecfg']['refresh']
-        self.Smote_init_refresh = SMOTE and cfg['smotecfg']['init_refresh']
-        self.Smote_rate = cfg['smotecfg']['refresh_rate']
-        Train_Data = Data(TrData, Train=True, SMOTE=SMOTE, Target_sr=cfg['target_sr'], smotecfg=cfg['smotecfg'], year=cfg['data_year'])
+        Train_Data = Data(TrData, Train=True)
         if cfg['class_balanced_sampling']:
-            TrSampler = BalancedFullBatchSampler(TrData['Labels'], self.n_class_samples, self.batch_size)
-            #self.Tr1Loader = data.DataLoader(Train_Data, batch_size=self.batch_size, shuffle=(TrSampler is None), batch_sampler=TrSampler, pin_memory=True) 
-            self.Tr1Loader = data.DataLoader(Train_Data, batch_sampler=TrSampler, num_workers=2, pin_memory=True) 
-            self.Tr2Loader = data.DataLoader(Train_Data, batch_sampler=TrSampler, num_workers=2, pin_memory=True)
+            TrSampler1 = BalancedFullBatchSampler(TrData['Labels'], self.n_class_samples, self.batch_size)
+            TrSampler2 = BalancedFullBatchSampler(TrData['Labels'], self.n_class_samples, self.batch_size)
+            self.Tr1Loader = data.DataLoader(Train_Data, batch_sampler=TrSampler1, num_workers=2, pin_memory=True) 
+            self.Tr2Loader = data.DataLoader(Train_Data, batch_sampler=TrSampler2, num_workers=2, pin_memory=True)
         else:
-            self.Tr1Loader = data.DataLoader(Train_Data, batch_size=self.batch_size, shuffle=True, num_workers=2, pin_memory=True, drop_last=True)#SMOTE) 
-            self.Tr2Loader = data.DataLoader(Train_Data, batch_size=self.batch_size, shuffle=True, num_workers=2, pin_memory=True, drop_last=True)#SMOTE)
+            self.Tr1Loader = data.DataLoader(Train_Data, batch_size=self.batch_size, shuffle=True, num_workers=2, pin_memory=True, drop_last=True)
+            self.Tr2Loader = data.DataLoader(Train_Data, batch_size=self.batch_size, shuffle=True, num_workers=2, pin_memory=True, drop_last=True)
 
         self.Mixup = cfg['mixupcfg']['mixup']
         self.Lambda = torch.distributions.beta.Beta(cfg['mixupcfg']['alpha'],cfg['mixupcfg']['alpha']) if self.Mixup else None
         
         #Train Set Eval DataLoader
-        TrEval_Data = Data(TrData, Train=True, SMOTE=False, Target_sr=cfg['target_sr'], smotecfg=cfg['smotecfg'], year=cfg['data_year'])
+        TrEval_Data = Data(TrData, Train=True)
         self.TrVLoader = data.DataLoader(TrEval_Data, batch_size=self.batch_size, shuffle=False, num_workers=2, pin_memory=True, drop_last=False) 
         
         #Val Set Eval DataLoader
-        Val_Data = Data(EvData, year=cfg['data_year'])
+        Val_Data = Data(EvData)
         self.ValLoader = data.DataLoader(Val_Data, batch_size=self.batch_size, num_workers=2, pin_memory=True, drop_last=False)
         
         #Other DataLoaders
-        Unknown_Data = Data(UnkData, year=cfg['data_year'])
-        Test_Data = Data(TsData, year=cfg['data_year'])
+        Unknown_Data = Data(UnkData)
+        Test_Data = Data(TsData)
         self.UnknownLoader = data.DataLoader(Unknown_Data, batch_size=self.batch_size, num_workers=2, pin_memory=True, drop_last=False)
         self.TestLoader = data.DataLoader(Test_Data, batch_size=self.batch_size, shuffle=False, num_workers=2, pin_memory=True, drop_last=False)
 
@@ -100,15 +97,13 @@ class Trainer(object):
         self.Meta['TsFiles'] = TsData['Files']
         self.Meta['data_year'] = data_year
         self.Loaders = {'Train': self.TrVLoader, 'Eval': self.ValLoader, 'Unknown': self.UnknownLoader, 'Test': self.TestLoader}
-
+        
+        self.DECAY = cfg['shiftcfg']['shift_decay']
+        self.SFACTOR = cfg['shiftcfg']['decay_factor']
+        self.SEPOCHS = set(cfg['shiftcfg']['decay_epochs'])
         self.model = Wilkinghoff(melcfg=cfg['melcfg'], mdam=cfg['mdam'], data_year=data_year).to(self.device)
-        if cfg['my_loss']:
-            self.warpcfg = cfg['warpcfg']
-            self.follow_cfg = cfg['warpcfg']['followup']
-            self.Loss = WarpLoss(self.warpcfg, n_classes=Meta['num_trclasses'], out_dims=2*cfg['dimensions'], learnable_loss=cfg['learnable_loss']).to(self.device)
-        else:
-            self.Loss = SCAdaCos(n_classes=Meta['num_trclasses'], n_subclusters=self.n_subclusters, out_dims=2*cfg['dimensions'], scale=cfg['scale'], shift=cfg['shift_value'], 
-                                 learnable_loss=cfg['learnable_loss'], adaptive_scale=cfg['adaptive_scale'], warp=cfg['warp']).to(self.device)
+        self.Loss = SCAdaCos(n_classes=Meta['num_trclasses'], n_subclusters=self.n_subclusters, out_dims=2*cfg['dimensions'], scale=cfg['scale'], shift=cfg['shiftcfg']['shift_value'], 
+                             learnable_loss=cfg['learnable_loss'], adaptive_scale=cfg['adaptive_scale'], warp=cfg['warp']).to(self.device)
 
         #Load Checkpoint if given
         if ckpt_path is not None:
@@ -119,29 +114,24 @@ class Trainer(object):
             proxy_checkpoint = torch.load(ProxyCheckpoint, map_location=self.device)
             self.Loss.load_state_dict(proxy_checkpoint)
         
-        #"""
-        NewShift = self.Loss.shift.item()
-        NewScale = self.Loss.s.clone()
-        ProxyCheckpoint = "./Checkpoints/Loss-Weights/StartWeights.pth"
-        proxy_checkpoint = torch.load(ProxyCheckpoint, map_location=self.device)
-        self.Loss.load_state_dict(proxy_checkpoint)
-        self.Loss.shift.data = torch.Tensor([NewShift])
-        self.Loss.s.data = NewScale.data
-        self.Loss.to(self.device)
-        #"""
-        #import code
-        #code.interact(local=locals())
+        #Load in Pre-Trained Proxies/Class Centers if specified.
+        if cfg['pre_trained_loss']:
+            assert os.path.isfile("./Checkpoints/Loss-Weights/StartWeights.pth"), "Error, Training Runs that use pre-trained Proxies need pre-trained Weights. Make some and move the trained file to ./Checkpoints/Loss-Weights/StartWeights.pth."
+            NewShift = self.Loss.shift.item()
+            NewScale = self.Loss.s.clone()
+            ProxyCheckpoint = "./Checkpoints/Loss-Weights/StartWeights.pth"
+            proxy_checkpoint = torch.load(ProxyCheckpoint, map_location=self.device)
+            self.Loss.load_state_dict(proxy_checkpoint)
+            self.Loss.shift.data = torch.Tensor([NewShift])
+            self.Loss.s.data = NewScale.data
+            self.Loss.to(self.device)
         
         #Omit Batch Norm, bias, and non trainable parameters from weight decay.regularization
         Parameters = [{'params': [Param for Param in self.model.parameters() if len(Param.shape) == 1 and Param.requires_grad], 'weight_decay': 0.0, 'lr': cfg['learning_rate']},
                       {'params': [Param for Param in self.model.parameters() if len(Param.shape) != 1 and Param.requires_grad], 'weight_decay': cfg['weight_decay'], 'lr': cfg['learning_rate']},
                       {'params': [Param for Param in self.Loss.parameters()], 'weight_decay': cfg['loss_weight_decay'], 'lr': cfg['loss_learning_rate']}]
-        #self.optimizer = torch.optim.Adam(Parameters)# if not cfg['my_loss'] else 
-        self.optimizer = torch.optim.AdamW(Parameters)#, eps=1.0) #Change this...?
+        self.optimizer = torch.optim.AdamW(Parameters)
         self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs, eta_min=0.0005)
-        #self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[1,4,7], gamma=0.5)
-        #self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=2, gamma=0.5)
-        #self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.5)
         
         #Some job tracking variables
         self.epoch = 0
@@ -150,23 +140,14 @@ class Trainer(object):
         self.iters_per_log = cfg['iterations_per_log']
         self.epochs_per_ckpt = cfg['epochs_per_ckpt']
         self.init_eval = cfg['init_eval']
-        self.my_loss = cfg['my_loss']
-        self.evalcfg = cfg['evalcfg']
         self.test_eval = cfg['test_eval']
         
         #Set the Logger so we know what's going on during the training process
-        filename = "log.txt" if self.my_loss else "testrun3.txt"
+        filename = FILENAME if FILENAME is not None else "log.txt"
         self.logger = SetupLogger(name="Solace", save_dir=".", distributed_rank=0, filename=filename, mode="a+")
         self.logger.info("Applied Seed: {}".format(SEED))
-        if self.my_loss:
-            self.logger.info(
-                "Hyperparameters:\nalpha: {:f} || Temp: {:.4f} || k1: {:.4f} || k2: {:.4f} || lr: {} || plr: {} || f_alpha: {:f} || f_k1: {:.4} || f_2: {:.4} || f_temp: {:.4f} || flr: {} || fplr: {}".format(
-                cfg['warpcfg']['alpha'], cfg['warpcfg']['temp'], cfg['warpcfg']['k1'], cfg['warpcfg']['k2'], cfg['learning_rate'], cfg['loss_learning_rate'],
-                self.follow_cfg['alpha'], self.follow_cfg['k1'], self.follow_cfg['k2'], self.follow_cfg['temp'], self.follow_cfg['learning_rate'], self.follow_cfg['proxy_learning_rate'])
-                )
-        else:
-            self.logger.info("Settings:\nAdaptive Scale: {} || Warp: {} || Scale Value: {:f} || Shift Value: {:f}".format(cfg['adaptive_scale'], cfg['warp'], 
-                             cfg['scale'], cfg['shift_value']))
+        self.logger.info("Settings:\nAdaptive Scale: {} || Warp: {} || Scale Value: {:f} || Shift Value: {:f}".format(cfg['adaptive_scale'], cfg['warp'], 
+                        cfg['scale'], cfg['shiftcfg']['shift_value']))
                     
     def _checkpoint(self, model_name=None, proxy_name=None):
         #Save Checkpoint
@@ -191,7 +172,6 @@ class Trainer(object):
     def _eval(self, Test=False):
         if Test:
             #Load Best Checkpoitn
-            #print("Evaluating Best Model on Test Data...")
             self.logger.info("Evaluating Best Model on Test Data...")
             checkpoint = torch.load("./Checkpoints/Best_model.pth", map_location=self.device)
             self.model.load_state_dict(checkpoint)
@@ -216,8 +196,7 @@ class Trainer(object):
                     #Forward through model
                     Output = self.model(Batch)
                     #Loss = self.Loss(Output, Labels)
-                    if not self.my_loss:
-                        Output = torch.nn.functional.normalize(Output, dim=1)
+                    Output = torch.nn.functional.normalize(Output, dim=1)
                     
                     #Gonvert Annotations to numpy arrays for post-processing
                     #Eval.append(torch.nn.functional.normalize(Output, dim=1).cpu().numpy())
@@ -233,7 +212,7 @@ class Trainer(object):
         Preds['Test'] = np.zeros((self.Meta['Shapes']['Test'][0], Trshape))
         Preds['Train'] = np.zeros((self.Meta['Labels']['Train'].shape[0], Trshape))
         
-        final_results = evaluate(embeddings, Preds, self.Meta, self.logger, self.evalcfg, n_subclusters=self.n_subclusters, Test=Test)
+        final_results = evaluate(embeddings, Preds, self.Meta, self.logger, n_subclusters=self.n_subclusters, Test=Test)
         self.model.train()  
         return final_results
     
@@ -249,20 +228,6 @@ class Trainer(object):
             _, final_results_eval = self._eval(Test=True)
             Best_score = np.mean(final_results_dev)
         
-        if self.Smote_init_refresh:
-            self.Tr1Loader.dataset.refresh(self.model)
-            self.Tr2Loader.dataset.refresh(self.model)
-        
-        
-        #self.logger.info("Current Loss Scale Term: {}".format(self.Loss.s))
-        #input()
-        """
-        self.Loss._UpdateParameters(self.warpcfg['followup'])
-        #self.optimizer.param_groups[0]['lr'] = self.warpcfg['followup']['learning_rate']
-        #self.optimizer.param_groups[1]['lr'] = self.warpcfg['followup']['learning_rate']
-        #self.optimizer.param_groups[2]['lr'] = self.warpcfg['followup']['proxy_learning_rate']
-        #"""
-
         #Best_Epoch = 1 #Temporarily removed for now, can add back in later.
         LossQueue = 100*[0.0]
         LossQueue2 = 100*[0.0]
@@ -294,16 +259,13 @@ class Trainer(object):
                     Labels = torch.nn.functional.one_hot(Samples[0]['Labels'][:,0].to(self.device).long(), num_classes=self.Meta['num_trclasses'])
                 
                 #Forward
-                #print(Batch.shape)
-                #print(torch.unique(torch.argmax(Labels, dim=-1)).shape)
-                #input()
-                #continue
                 Output = self.model(Batch)
                 Loss, LossDefault = self.Loss(Output, Labels)
                 assert (Loss == Loss).all(), "Nans!!!"
+                
                 #Running Average of Loss
-                LossQueue[-1] = LossDefault.item()#Loss.item()# / 100
-                LossQueue2[-1] = Loss.item()#Loss.item()# / 100
+                LossQueue[-1] = LossDefault.item()
+                LossQueue2[-1] = Loss.item()
                 LossQueue = LossQueue[-1:] + LossQueue[:-1]
                 LossQueue2 = LossQueue2[-1:] + LossQueue2[:-1]
                 running_avg = sum(LossQueue) / min(100,self.iteration)
@@ -312,8 +274,6 @@ class Trainer(object):
                 #Backward
                 self.optimizer.zero_grad()
                 Loss.backward()
-                #print("Iteration:",self.iteration)
-                #input()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5)
                 #torch.nn.utils.clip_grad_value_(self.model.parameters(), 5)
                 self.optimizer.step()
@@ -333,14 +293,10 @@ class Trainer(object):
                             running_avg2))
             
             self.lr_scheduler.step()
-            #if self.epoch % 2 == 0:
-            if self.epoch in {1,4,8}:
-                #input("Adjusting Shift Parameter...")
-                self.Loss.shift *= 0.5
-            #if self.epoch == 6:
-            #    self.Loss.shift *= -1
-            #if self.epoch in {7,9}:
-            #    self.Loss.shift *= 2.0
+            if self.DECAY and self.epoch in self.SEPOCHS:
+                print("Adjusting Shift Parameter...")
+                self.Loss.shift *= self.SFACTOR
+            self.logger.info("Current Shift Parameter {:.4f}".format((180*(self.Loss.shift / torch.pi)).item()))
             self.logger.info("Current Loss Scale Term: {}".format(self.Loss.s.item()))
             
             #Run evalution if enough epochs have passed
@@ -357,20 +313,8 @@ class Trainer(object):
                 
             if epoch % self.epochs_per_ckpt == 0:
                 #print("Iteration:",self.iteration)
-                #input("Saving checkpoint...")
+                #print("Saving checkpoint...")
                 self._checkpoint()
-                #pass
-
-            if self.Smote_refresh and epoch % self.Smote_rate == 0 and epoch != self.epochs:
-                self.Tr1Loader.dataset.refresh(self.model)
-                self.Tr2Loader.dataset.refresh(self.model)
-
-            if self.my_loss:
-                if epoch == self.epochs - self.warpcfg['followup']['epochs']:
-                    self.Loss._UpdateParameters(self.warpcfg['followup'])
-                    #self.optimizer.param_groups[0]['lr'] = self.warpcfg['followup']['learning_rate']
-                    #self.optimizer.param_groups[1]['lr'] = self.warpcfg['followup']['learning_rate']
-                    #self.optimizer.param_groups[2]['lr'] = self.warpcfg['followup']['proxy_learning_rate']
         
         #Save the Checkpoint
         self._checkpoint()
@@ -394,7 +338,6 @@ def main(Args):
     #Initialize Trainer Class
     checkpoint_path = "./Checkpoints/" + Args.resume if Args.resume is not None else None
     TrManager = Trainer(load_config(Args.config), checkpoint_path)
-    #random.seed(0)
 
     #Train the Model
     TrManager.train()
