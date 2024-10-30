@@ -21,8 +21,6 @@ class SCAdaCos(nn.Module):
         else:
             self.s = torch.nn.Parameter(torch.Tensor([scale]), requires_grad=False)
         self.shift = torch.nn.Parameter(torch.Tensor([torch.pi / shift]), requires_grad=False)
-        self.margin = 0.0
-        
     
     def forward(self, x, y1):
         y1_orig = y1.clone()
@@ -46,7 +44,7 @@ class SCAdaCos(nn.Module):
         
         def Cross_Entropy(CELogits):
             CELogits *= self.s
-            sub_probs = F.softmax(CELogits - self.margin*y1).view(-1, self.n_classes, self.n_subclusters)
+            sub_probs = F.softmax(CELogits).view(-1, self.n_classes, self.n_subclusters)
             probs = torch.sum(sub_probs, dim=2)
             Hotprobs = torch.sum(y1_orig*probs, dim=1)
             Hotprobs[Hotprobs==0] += self.epsilon

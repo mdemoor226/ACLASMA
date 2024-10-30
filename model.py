@@ -63,15 +63,12 @@ class TemporalAttention(nn.Module):
         super(TemporalAttention, self).__init__()
         #Temporal-wise Attention...
         self.gap = nn.AdaptiveAvgPool2d((1,1))
-        #print(planes)
         self.conv1d = nn.Conv1d(planes, planes, k, padding='same')
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, In):
         batch = In.shape[0]
         x = self.gap(In.permute(0,2,1,3))
-        #print(x.shape)
-        #input()
         x = self.conv1d(x.squeeze(dim=-1)) #Note: I was unable to just use x.squeeze(). It kept appending a batch dim in the conv1d operation. This might be a PyTorch Bug?
         out = self.sigmoid(x).view(batch,1,-1,1)
         return out
@@ -439,7 +436,7 @@ class Wilkinghoff(nn.Module):
             mean = np.load(data_year + "saved_data/data_mean.npy")
             std = np.load(data_year + "saved_data/data_std.npy")
         else:
-            mean, std = get_stats(Target_sr, data_year)
+            mean, std = get_stats(data_year)
         
         self.data_mean = torch.nn.Parameter(torch.from_numpy(mean), requires_grad=False)
         self.data_std = torch.nn.Parameter(torch.from_numpy(std), requires_grad=False)

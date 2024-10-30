@@ -17,7 +17,6 @@ function Unzip {
 	for zip_file in *.zip; do
 	    if [ -f "$zip_file" ]; then
 		unzip "$zip_file"
-		# If you want to delete the zip file after extracting, uncomment the next line
 		rm "$zip_file"
 	    fi
 	done
