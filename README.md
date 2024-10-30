@@ -12,7 +12,7 @@
 ## To Run The Code
 1. Clone the repository
 2. Download and Prepare the DCASE 2022/2023 Datasets by running the data preparation scripts in their respective folders.
-3. Specify you desired training settings in the config file.
+3. Specify your desired training settings in the config file.
 4. python3 train.py (See a few examples in the Extra folder.
 
 If training is going right, the Warp Loss should slightly bound the Default Loss from above.
